@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
+  <title>Ident Frame Renderer - Per-Letter Gothic Street Edition</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      background-color: #00FF00; /* Pure uniform chroma key green */
+    }
+    #canvas-container {
+      width: 1080px;
+      height: 1920px;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    canvas {
+      display: block;
+      width: 1080px !important;
+      height: 1920px !important;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/node_modules/three/build/three.module.js",
+        "three/addons/": "/node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+    import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+    import {
+      DEG_TO_RAD,
+      computeLetterLayouts,
+      computeFrameState,
+      fitTextToCamera,
+    } from '/src/identCore.js';
+
+    let config = null;
+    let renderer = null;
+    let scene = null;
+    let camera = null;
+    let textGroup = null;
+    let letterMeshes = [];
+    let letterLayouts = [];
+
+    async function init() {
+      try {
+        const configResp = await fetch('/config.json');
+        config = await configResp.json();
+
+        const container = document.getElementById('canvas-container');
+        const width = config.width || 1080;
+        const height = config.height || 1920;
+
+        renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: false,
+          preserveDrawingBuffer: true,
+          powerPreference: "high-performance"
+        });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+        container.appendChild(renderer.domElement);
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(config.backgroundColor || '#00FF00');
+
+        const aspect = width / height;
+        camera = new THREE.PerspectiveCamera(config.camera.fov, aspect, config.camera.near, config.camera.far);
+
+        // Studio lighting setup tuned for Silver face + Electric Blue edge bevel glints
+        const ambientLight = new THREE.AmbientLight(0xffffff, config.lights.ambientIntensity);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(config.lights.keyLight.color, config.lights.keyLight.intensity);
+        keyLight.position.set(...config.lights.keyLight.position);
+        scene.add(keyLight);
+
+        const rimLight = new THREE.DirectionalLight(config.lights.rimLight.color, config.lights.rimLight.intensity);
+        rimLight.position.set(...config.lights.rimLight.position);
+        scene.add(rimLight);
+
+        const fillLight = new THREE.DirectionalLight(config.lights.fillLight.color, config.lights.fillLight.intensity);
+        fillLight.position.set(...config.lights.fillLight.position);
+        scene.add(fillLight);
+
+        if (config.lights.edgeAccentLight) {
+          const edgeLight = new THREE.DirectionalLight(config.lights.edgeAccentLight.color, config.lights.edgeAccentLight.intensity);
+          edgeLight.position.set(...config.lights.edgeAccentLight.position);
+          scene.add(edgeLight);
+        }
+
+        // Load Font
+        const loader = new FontLoader();
+        const font = await new Promise((res, rej) => {
+          loader.load(config.fontPath, res, undefined, rej);
+        });
+
+        // Compute exact per-letter target layouts
+        const layoutData = computeLetterLayouts(config.text, font, config);
+        letterLayouts = layoutData.layouts;
+
+        // Front face: Cold off-white / light silver-gray (#F2F4F7)
+        const frontMaterial = new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(config.frontColor),
+          roughness: config.materials?.frontRoughness ?? 0.22,
+          metalness: config.materials?.frontMetalness ?? 0.35,
+          clearcoat: config.materials?.frontClearcoat ?? 0.6,
+          clearcoatRoughness: 0.15,
+          reflectivity: 0.9
+        });
+
+        // Side extrusion + Bevel: Vivid electric blue (#1480FF) contour + deep blue (#053494) depth
+        const sideMaterial = new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(config.sideColor),
+          emissive: new THREE.Color(config.bevelAccentColor || '#1480FF'),
+          emissiveIntensity: 0.18,
+          roughness: config.materials?.sideRoughness ?? 0.30,
+          metalness: config.materials?.sideMetalness ?? 0.55,
+          clearcoat: config.materials?.sideClearcoat ?? 0.8,
+          clearcoatRoughness: 0.1
+        });
+
+        textGroup = new THREE.Group();
+        textGroup.name = 'ident-root';
+        letterMeshes = [];
+
+        for (let i = 0; i < letterLayouts.length; i++) {
+          const l = letterLayouts[i];
+          const charGeom = new TextGeometry(l.char, {
+            font: font,
+            size: config.geometry.size,
+            depth: config.geometry.depth,
+            curveSegments: config.geometry.curveSegments,
+            bevelEnabled: config.geometry.bevelEnabled,
+            bevelThickness: config.geometry.bevelThickness,
+            bevelSize: config.geometry.bevelSize,
+            bevelOffset: config.geometry.bevelOffset,
+            bevelSegments: config.geometry.bevelSegments
+          });
+          charGeom.computeBoundingBox();
+          charGeom.center();
+          charGeom.computeVertexNormals();
+
+          const mesh = new THREE.Mesh(charGeom, [frontMaterial, sideMaterial]);
+          mesh.name = `letter-mesh-${i}`;
+          mesh.userData = { index: i, char: l.char, targetX: l.targetX, targetY: l.targetY };
+          mesh.position.set(l.targetX, l.targetY, 0);
+          mesh.castShadow = false;
+          mesh.receiveShadow = false;
+          textGroup.add(mesh);
+          letterMeshes.push(mesh);
+        }
+
+        scene.add(textGroup);
+
+        // Apply mathematical camera auto-framing
+        const optimalZ = fitTextToCamera(
+          layoutData.wordWidth,
+          layoutData.wordHeight,
+          camera,
+          config.framing?.safeWidthRatio || 0.80,
+          config.framing?.safeHeightRatio || 0.35
+        );
+        camera.position.set(0, 0, optimalZ);
+        camera.lookAt(0, 0, 0);
+
+        // Render initial frame 0
+        window.renderFrame(0);
+
+        window.identReady = true;
+        console.log("Per-Letter 3D Ident ready for rendering (optimalZ:", optimalZ, ")");
+      } catch (err) {
+        console.error("Initialization error:", err);
+        window.identError = err.message;
+      }
+    }
+
+    window.renderFrame = function(frameIndex) {
+      if (!textGroup || !scene || !camera || !renderer || letterLayouts.length === 0) return;
+      const state = computeFrameState(frameIndex, config, letterLayouts);
+
+      textGroup.position.set(state.groupPosition.x, state.groupPosition.y, state.groupPosition.z);
+      textGroup.rotation.set(state.groupRotation.x, state.groupRotation.y, state.groupRotation.z);
+      textGroup.scale.set(state.groupScale.x, state.groupScale.y, state.groupScale.z);
+
+      for (let i = 0; i < state.letters.length; i++) {
+        const lState = state.letters[i];
+        const mesh = letterMeshes[i];
+        if (mesh) {
+          mesh.visible = lState.visible;
+          mesh.position.set(lState.position.x, lState.position.y, lState.position.z);
+          mesh.rotation.set(lState.rotation.x, lState.rotation.y, lState.rotation.z);
+          mesh.scale.set(lState.scale.x, lState.scale.y, lState.scale.z);
+        }
+      }
+
+      renderer.render(scene, camera);
+      return state;
+    };
+
+    init();
+  </script>
+</body>
+</html>

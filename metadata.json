@@ -1,0 +1,6 @@
+{
+  "name": "Cloud 3D Ident Generator",
+  "description": "Deterministic 3D text motion graphic generator and cloud renderer for vertical video idents with chroma key export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

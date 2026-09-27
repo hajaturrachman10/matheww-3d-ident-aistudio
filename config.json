@@ -1,0 +1,102 @@
+{
+  "text": "MATHEWW",
+  "width": 1080,
+  "height": 1920,
+  "fps": 60,
+  "duration": 3.0,
+  "totalFrames": 180,
+  "frontColor": "#F2F4F7",
+  "bevelAccentColor": "#1480FF",
+  "sideColor": "#053494",
+  "backgroundColor": "#00FF00",
+  "fontPath": "/fonts/pirata_one.typeface.json",
+  "fontName": "Pirata One",
+  "geometry": {
+    "size": 100,
+    "depth": 28,
+    "curveSegments": 12,
+    "bevelEnabled": true,
+    "bevelThickness": 5,
+    "bevelSize": 3.5,
+    "bevelOffset": 0,
+    "bevelSegments": 5
+  },
+  "materials": {
+    "frontRoughness": 0.22,
+    "frontMetalness": 0.35,
+    "frontClearcoat": 0.6,
+    "sideRoughness": 0.3,
+    "sideMetalness": 0.55,
+    "sideClearcoat": 0.8
+  },
+  "framing": {
+    "safeWidthRatio": 0.8,
+    "safeHeightRatio": 0.35
+  },
+  "animation": {
+    "phases": {
+      "anticipationEnd": 0.12,
+      "entranceEnd": 0.72,
+      "mergeSettleEnd": 0.95,
+      "idleEnd": 2.1,
+      "preExitEnd": 2.35,
+      "outroEnd": 3
+    },
+    "idle": {
+      "yawRangeDeg": 2,
+      "pitchRangeDeg": 0.9,
+      "floatRangeY": 3.5,
+      "scaleBreathRange": 0.012,
+      "frequencyHz": 0.75
+    }
+  },
+  "camera": {
+    "fov": 45,
+    "near": 0.1,
+    "far": 3000,
+    "position": [
+      0,
+      0,
+      750
+    ]
+  },
+  "lights": {
+    "ambientIntensity": 0.9,
+    "keyLight": {
+      "color": "#FFFFFF",
+      "intensity": 2.8,
+      "position": [
+        180,
+        320,
+        600
+      ]
+    },
+    "rimLight": {
+      "color": "#38A4FF",
+      "intensity": 4.5,
+      "position": [
+        -350,
+        200,
+        -200
+      ]
+    },
+    "fillLight": {
+      "color": "#0B4CBA",
+      "intensity": 2.2,
+      "position": [
+        -250,
+        -250,
+        400
+      ]
+    },
+    "edgeAccentLight": {
+      "color": "#00A2FF",
+      "intensity": 3.8,
+      "position": [
+        300,
+        -100,
+        300
+      ]
+    }
+  }
+}

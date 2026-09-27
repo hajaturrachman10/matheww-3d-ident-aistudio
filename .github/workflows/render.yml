@@ -4,31 +4,31 @@ on:
   workflow_dispatch:
     inputs:
       text:
-        description: Text to display
+        description: "Text to display"
         required: true
-        default: MATHEWW
+        default: "MATHEWW"
         type: string
 
       front_color:
-        description: Front face color
+        description: "Front face color"
         required: true
         default: "#F2F4F7"
         type: string
 
       bevel_color:
-        description: Blue bevel accent
+        description: "Blue bevel accent"
         required: true
         default: "#1480FF"
         type: string
 
       side_color:
-        description: Dark blue extrusion color
+        description: "Dark blue extrusion color"
         required: true
         default: "#053494"
         type: string
 
       duration:
-        description: Duration in seconds
+        description: "Duration in seconds"
         required: true
         default: "3"
         type: string
@@ -38,29 +38,32 @@ permissions:
 
 jobs:
   render:
+    name: Render Deterministic 3D Ident
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js LTS
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 22
+          cache: "npm"
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install dependencies (clean reproducible)
+        run: npm ci
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium & system dependencies
         run: npx playwright install --with-deps chromium
 
-      - name: Install FFmpeg
+      - name: Install and verify FFmpeg & FFprobe
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           ffmpeg -version
+          ffprobe -version
 
       - name: Render deterministic 3D frames
         env:
@@ -73,6 +76,9 @@ jobs:
 
       - name: Encode H.264 MP4
         run: node render/encode.mjs
+
+      - name: Validate final video
+        run: node render/validate.mjs
 
       - name: Upload MP4 artifact
         uses: actions/upload-artifact@v4

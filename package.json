@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "render:frames": "node render/render-frames.mjs",
     "encode": "node render/encode.mjs",
+    "validate": "node render/validate.mjs",
     "render": "node render/render-all.mjs"
   },
   "dependencies": {
@@ -36,7 +37,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"

@@ -19,6 +19,7 @@ const frontColorArg = process.env.IDENT_FRONT_COLOR || process.argv.find(a => a.
 const bevelColorArg = process.env.IDENT_BEVEL_COLOR || process.argv.find(a => a.startsWith('--bevelColor='))?.split('=')[1];
 const sideColorArg = process.env.IDENT_SIDE_COLOR || process.argv.find(a => a.startsWith('--sideColor='))?.split('=')[1];
 const durationArg = process.env.IDENT_DURATION || process.argv.find(a => a.startsWith('--duration='))?.split('=')[1];
+const maxFramesArg = process.env.MAX_FRAMES || process.argv.find(a => a.startsWith('--maxFrames='))?.split('=')[1];
 
 if (textArg) config.text = textArg;
 if (frontColorArg) config.frontColor = frontColorArg;
@@ -63,7 +64,8 @@ const mimeTypes = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.woff': 'font/woff',
-  '.woff2': 'font/woff2'
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf'
 };
 
 const server = http.createServer((req, res) => {
@@ -90,7 +92,8 @@ const server = http.createServer((req, res) => {
     const contentType = mimeTypes[ext] || 'application/octet-stream';
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, no-cache, must-revalidate'
     });
     fs.createReadStream(filePath).pipe(res);
   });
@@ -116,6 +119,8 @@ const browser = await chromium.launch({
     '--disable-dev-shm-usage',
     '--use-gl=angle',
     '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
     '--enable-webgl'
   ]
 });
@@ -130,11 +135,14 @@ const context = await browser.newContext({
 
 const page = await context.newPage();
 
-// Catch browser console logs for debugging
+// Catch browser console logs and uncaught errors for debugging
 page.on('console', (msg) => {
   if (msg.type() === 'error') {
     console.error(`[Browser Error]: ${msg.text()}`);
   }
+});
+page.on('pageerror', (err) => {
+  console.error(`[Browser PageError]: ${err.message}`);
 });
 
 console.log(`🌐 Navigating to ${renderUrl}...`);
@@ -149,11 +157,12 @@ if (identError) {
 console.log('✅ Three.js ident engine initialized successfully.');
 
 const totalFrames = config.totalFrames || 180;
-console.log(`📸 Rendering ${totalFrames} frames (0 to ${totalFrames - 1})...`);
+const framesToRender = maxFramesArg ? Math.min(parseInt(maxFramesArg, 10), totalFrames) : totalFrames;
+console.log(`📸 Rendering ${framesToRender} frames (0 to ${framesToRender - 1}) out of ${totalFrames} total...`);
 
 const startTime = Date.now();
 
-for (let i = 0; i < totalFrames; i++) {
+for (let i = 0; i < framesToRender; i++) {
   // Deterministically set frame
   await page.evaluate((idx) => {
     window.renderFrame(idx);
@@ -169,16 +178,16 @@ for (let i = 0; i < totalFrames; i++) {
     omitBackground: false
   });
 
-  if ((i + 1) % 15 === 0 || i === totalFrames - 1) {
+  if ((i + 1) % 15 === 0 || i === framesToRender - 1) {
     const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-    const percent = Math.round(((i + 1) / totalFrames) * 100);
+    const percent = Math.round(((i + 1) / framesToRender) * 100);
     const fpsRate = ((i + 1) / ((Date.now() - startTime) / 1000)).toFixed(1);
-    console.log(`[${String(i + 1).padStart(3, ' ')}/${totalFrames}] ${percent}% | ${fpsRate} fps | ${elapsedSec}s elapsed`);
+    console.log(`[${String(i + 1).padStart(3, ' ')}/${framesToRender}] ${percent}% | ${fpsRate} fps | ${elapsedSec}s elapsed`);
   }
 }
 
 const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-console.log(`\n🎉 Frame rendering complete! All ${totalFrames} frames saved to ${framesDir}`);
+console.log(`\n🎉 Frame rendering complete! All ${framesToRender} frames saved to ${framesDir}`);
 console.log(`⏱️ Total render time: ${totalDuration}s`);
 
 await browser.close();

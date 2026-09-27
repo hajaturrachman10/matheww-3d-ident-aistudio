@@ -26,6 +26,12 @@ if (frames.length === 0) {
   process.exit(1);
 }
 
+const expectedFrames = config.totalFrames || Math.round(config.duration * (config.fps || 60));
+if (frames.length !== expectedFrames) {
+  console.error(`❌ Frame count mismatch: found ${frames.length} frames, expected ${expectedFrames} frames.`);
+  process.exit(1);
+}
+
 if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
@@ -75,17 +81,78 @@ if (result.status !== 0) {
   process.exit(result.status || 1);
 }
 
-if (fs.existsSync(outputPath)) {
-  const stats = fs.statSync(outputPath);
-  const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-  console.log('\n' + '='.repeat(60));
-  console.log('✅ Video encoding successful!');
-  console.log(`📁 File:   ${outputPath}`);
-  console.log(`📊 Size:   ${sizeMB} MB`);
-  console.log(`⏱️ Duration: ${config.duration} seconds`);
-  console.log(`📐 Resolution: ${config.width}x${config.height}`);
-  console.log('='.repeat(60));
-} else {
+if (!fs.existsSync(outputPath)) {
   console.error('❌ Output file was not created.');
   process.exit(1);
 }
+
+const stats = fs.statSync(outputPath);
+const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+console.log('\n' + '='.repeat(60));
+console.log('✅ Video encoding successful!');
+console.log(`📁 File:   ${outputPath}`);
+console.log(`📊 Size:   ${sizeMB} MB`);
+console.log(`⏱️ Duration: ${config.duration} seconds`);
+console.log(`📐 Resolution: ${config.width}x${config.height}`);
+console.log('='.repeat(60));
+
+// Validate generated video using ffprobe
+console.log('🔍 Validating video stream characteristics via ffprobe...');
+const probeResult = spawnSync('ffprobe', [
+  '-v', 'error',
+  '-select_streams', 'v:0',
+  '-show_entries', 'stream=codec_name,width,height,r_frame_rate,duration,nb_frames',
+  '-of', 'json',
+  outputPath
+], { encoding: 'utf8' });
+
+if (probeResult.status !== 0 || !probeResult.stdout) {
+  console.error('❌ ffprobe validation command failed.');
+  if (probeResult.stderr) console.error(probeResult.stderr);
+  process.exit(1);
+}
+
+let probeData;
+try {
+  probeData = JSON.parse(probeResult.stdout);
+} catch (e) {
+  console.error('❌ Failed to parse ffprobe output as JSON:', e);
+  process.exit(1);
+}
+
+const stream = probeData.streams && probeData.streams[0];
+if (!stream) {
+  console.error('❌ ffprobe failed to find a video stream in the generated file.');
+  process.exit(1);
+}
+
+if (stream.codec_name !== 'h264') {
+  console.error(`❌ Validation failed: expected codec "h264", got "${stream.codec_name}"`);
+  process.exit(1);
+}
+
+if (stream.width !== config.width || stream.height !== config.height) {
+  console.error(`❌ Validation failed: expected resolution ${config.width}x${config.height}, got ${stream.width}x${stream.height}`);
+  process.exit(1);
+}
+
+const [fpsNum, fpsDen] = (stream.r_frame_rate || '').split('/').map(Number);
+const actualFps = fpsDen ? fpsNum / fpsDen : (fpsNum || 0);
+if (Math.abs(actualFps - config.fps) > 0.01) {
+  console.error(`❌ Validation failed: expected ${config.fps} fps, got ${actualFps} fps (${stream.r_frame_rate})`);
+  process.exit(1);
+}
+
+const videoDuration = parseFloat(stream.duration);
+if (!isNaN(videoDuration) && Math.abs(videoDuration - config.duration) > 0.25) {
+  console.error(`❌ Validation failed: expected duration ~${config.duration}s, got ${videoDuration}s`);
+  process.exit(1);
+}
+
+console.log('🎉 Final video validation PASSED:');
+console.log(`   ✓ File exists: ${outputFileName}`);
+console.log(`   ✓ H.264 video stream confirmed (${stream.codec_name})`);
+console.log(`   ✓ Resolution: ${stream.width}x${stream.height}`);
+console.log(`   ✓ Framerate: ${actualFps} fps (${stream.r_frame_rate})`);
+console.log(`   ✓ Duration: ${videoDuration ? videoDuration.toFixed(2) + 's' : config.duration + 's'} (expected ~${config.duration}s)`);
+console.log(`   ✓ Source frames: ${frames.length} frames (exactly matches ${expectedFrames})`);
